@@ -91,19 +91,28 @@ export const SettingsPage: React.FC = () => {
                     <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-slate-200 text-slate-700">
                       {source.source_type}
                     </span>
-                    {source.is_configured ? (
+                    {source.name === 'remotive' ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                        <span>100% Free Public Feed (Active)</span>
+                      </span>
+                    ) : source.is_configured ? (
                       <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
                         <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                         <span>Connected & Active</span>
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
-                        <AlertCircle className="w-3 h-3 text-amber-600" />
-                        <span>Credentials Required</span>
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
+                        <span>Optional Paid Tier</span>
                       </span>
                     )}
                   </div>
                   <div className="text-xs text-slate-500">
+                    {source.name === 'remotive' && (
+                      <span className="text-emerald-700 font-semibold block mb-0.5">
+                        Zero cost — No credit card or paid subscription needed.
+                      </span>
+                    )}
                     Total listings ingested: <strong className="text-slate-700">{source.total_listings}</strong>
                     {source.last_sync_at && (
                       <span> • Last synced: {new Date(source.last_sync_at).toLocaleString()}</span>
@@ -116,17 +125,11 @@ export const SettingsPage: React.FC = () => {
                   )}
                 </div>
 
-                {!source.is_configured && source.name === 'adzuna' && (
+                {source.name === 'remotive' && (
                   <div className="text-right">
-                    <a
-                      href="https://developer.adzuna.com/"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800"
-                    >
-                      <span>Get Free API Key</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
+                    <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">
+                      Open Public Feed
+                    </span>
                   </div>
                 )}
               </div>
