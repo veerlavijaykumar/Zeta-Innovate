@@ -32,6 +32,7 @@ backend/uploads/*
 
 # Environment variables
 .env
+.env.example
 backend/.env
 frontend/.env
 *.env.local
