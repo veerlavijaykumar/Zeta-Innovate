@@ -3,8 +3,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 from sqlalchemy.orm import DeclarativeBase
 from app.core.config import settings
 
+db_url = settings.DATABASE_URL
+if db_url.startswith("postgres://"):
+    db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
+elif db_url.startswith("postgresql://") and not db_url.startswith("postgresql+asyncpg://"):
+    db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
 engine_kwargs = {"echo": settings.DEBUG}
-if not settings.DATABASE_URL.startswith("sqlite"):
+if not db_url.startswith("sqlite"):
     engine_kwargs.update({
         "pool_size": 20,
         "max_overflow": 10,
@@ -12,7 +18,7 @@ if not settings.DATABASE_URL.startswith("sqlite"):
     })
 
 engine = create_async_engine(
-    settings.DATABASE_URL,
+    db_url,
     **engine_kwargs
 )
 

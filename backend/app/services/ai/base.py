@@ -19,18 +19,17 @@ class AIService:
         self._rate_limit_window = 60  # seconds
         self._rate_limit_max = settings.RATE_LIMIT_AI
 
-    def _get_client(self):
+    def _get_client(self, model_name: Optional[str] = None):
         """Lazy-init the Gemini client."""
-        if self._client is None:
-            if not settings.GEMINI_API_KEY:
-                raise RuntimeError(
-                    "GEMINI_API_KEY not configured. Set it in your .env file. "
-                    "Get a key at https://aistudio.google.com/app/apikey"
-                )
-            import google.generativeai as genai
-            genai.configure(api_key=settings.GEMINI_API_KEY)
-            self._client = genai.GenerativeModel(settings.GEMINI_MODEL)
-        return self._client
+        if not settings.GEMINI_API_KEY:
+            raise RuntimeError(
+                "GEMINI_API_KEY not configured. Set it in your .env file. "
+                "Get a key at https://aistudio.google.com/app/apikey"
+            )
+        import google.generativeai as genai
+        genai.configure(api_key=settings.GEMINI_API_KEY)
+        chosen_model = model_name or settings.GEMINI_MODEL
+        return genai.GenerativeModel(chosen_model)
 
     async def _rate_limit_check(self):
         """Simple rate limiting."""
@@ -44,7 +43,7 @@ class AIService:
             wait_time = self._rate_limit_window - (now - self._last_request_time)
             if wait_time > 0:
                 logger.warning("Rate limit reached, waiting", wait_seconds=wait_time)
-                await asyncio.sleep(wait_time)
+                await asyncio.sleep(min(wait_time, 2.0))
                 self._request_count = 1
                 self._last_request_time = time.time()
 
@@ -52,66 +51,66 @@ class AIService:
         self,
         prompt: str,
         system_instruction: Optional[str] = None,
-        temperature: float = 0.3,
-        max_retries: int = None,
+        temperature: float = 0.2,
+        max_tokens: int = 2048,
+        max_retries: int = 2,
     ) -> str:
-        """Generate text with retry and timeout."""
-        max_retries = max_retries or settings.AI_MAX_RETRIES
+        """Generate text with fast fallback across available models and token limits."""
         await self._rate_limit_check()
 
-        client = self._get_client()
+        # Build prioritized list of models to try
+        candidates = [settings.GEMINI_MODEL, "gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"]
+        seen = set()
+        models_to_try = [m for m in candidates if m and not (m in seen or seen.add(m))]
 
-        for attempt in range(max_retries):
+        full_prompt = prompt
+        if system_instruction:
+            full_prompt = f"{system_instruction}\n\n{prompt}"
+
+        last_error = None
+        for model_name in models_to_try:
             try:
-                full_prompt = prompt
-                if system_instruction:
-                    full_prompt = f"{system_instruction}\n\n{prompt}"
-
+                client = self._get_client(model_name)
                 response = await asyncio.wait_for(
                     asyncio.to_thread(
                         client.generate_content,
                         full_prompt,
                         generation_config={
                             "temperature": temperature,
-                            "max_output_tokens": 8192,
+                            "max_output_tokens": max_tokens,
                         },
                     ),
-                    timeout=settings.AI_REQUEST_TIMEOUT,
+                    timeout=25,
                 )
 
-                if response.text:
+                if response.text and response.text.strip():
                     return response.text
                 else:
-                    logger.warning("Empty AI response", attempt=attempt)
-                    continue
-
-            except asyncio.TimeoutError:
-                logger.error("AI request timeout", attempt=attempt)
-                if attempt == max_retries - 1:
-                    raise
-                await asyncio.sleep(2 ** attempt)
-
+                    logger.warning("Empty AI response", model=model_name)
             except Exception as e:
-                logger.error("AI request failed", error=str(e), attempt=attempt)
-                if attempt == max_retries - 1:
-                    raise
-                await asyncio.sleep(2 ** attempt)
+                err_str = str(e)
+                last_error = e
+                logger.warning("AI model failed, attempting next available model", model=model_name, error=err_str[:120])
+                # If quota exhausted (429) or model deprecated (404), immediately try next model without sleep
+                continue
 
-        raise RuntimeError("AI service unavailable after retries")
+        raise RuntimeError(f"All AI models exhausted: {str(last_error)}")
 
     async def generate_json(
         self,
         prompt: str,
         system_instruction: Optional[str] = None,
-        temperature: float = 0.2,
+        temperature: float = 0.1,
+        max_tokens: int = 2048,
     ) -> dict[str, Any]:
         """Generate and parse JSON response."""
-        json_prompt = prompt + "\n\nIMPORTANT: Respond ONLY with valid JSON. No markdown, no code blocks, no extra text."
+        json_prompt = prompt + "\n\nIMPORTANT: Respond ONLY with valid JSON. No markdown explanation, no conversational filler."
 
         response = await self.generate(
             json_prompt,
             system_instruction=system_instruction,
             temperature=temperature,
+            max_tokens=max_tokens,
         )
 
         # Clean potential markdown code blocks

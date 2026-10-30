@@ -220,13 +220,14 @@ class ResumeTailorService:
             prompt += f"CUSTOM INSTRUCTIONS: {custom_instructions}\n\n"
         prompt += "Generate the cover letter following the specified guidelines."
 
-        formatted_sys_prompt = COVER_LETTER_PROMPT.format(tone=tone)
+        formatted_sys_prompt = COVER_LETTER_PROMPT.replace("{tone}", tone)
 
         try:
             data = await self.ai.generate_json(
                 prompt=prompt,
                 system_instruction=formatted_sys_prompt,
                 temperature=0.3,
+                max_tokens=2048,
             )
         except Exception as e:
             logger.error("Failed to generate cover letter", error=str(e))

@@ -18,13 +18,21 @@ export const CareerIntelPage: React.FC = () => {
   const [selectedRole, setSelectedRole] = useState<CareerRecommendation | null>(null);
   const [compareRoles, setCompareRoles] = useState<string[]>([]);
   const [comparisonResult, setComparisonResult] = useState<any | null>(null);
+  const [forceRefresh, setForceRefresh] = useState(false);
 
   // Fetch Career Recommendations
   const { data, isLoading, error, refetch, isFetching } = useQuery({
-    queryKey: ['career-recommendations'],
-    queryFn: () => api.getCareerRecommendations(),
+    queryKey: ['career-recommendations', forceRefresh],
+    queryFn: () => api.getCareerRecommendations(forceRefresh),
     staleTime: 1000 * 60 * 30, // 30 mins
   });
+
+  const handleReanalyze = () => {
+    setForceRefresh(true);
+    setTimeout(() => {
+      refetch().finally(() => setForceRefresh(false));
+    }, 0);
+  };
 
   // Compare Careers Mutation
   const compareMutation = useMutation({
@@ -64,7 +72,7 @@ export const CareerIntelPage: React.FC = () => {
         </div>
 
         <button
-          onClick={() => refetch()}
+          onClick={handleReanalyze}
           disabled={isFetching}
           className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 font-semibold text-xs shadow-sm transition-colors disabled:opacity-50"
         >

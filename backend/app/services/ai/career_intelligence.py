@@ -8,19 +8,19 @@ from app.services.ai.base import AIService
 from app.models.profile import CandidateProfile
 import structlog
 
+import time
+
 logger = structlog.get_logger()
 
 CAREER_ANALYSIS_PROMPT = """You are an expert career counselor and job market analyst. 
-Analyze the candidate's profile and recommend suitable career paths.
+Analyze the candidate's profile and recommend the top 2-3 most suitable career paths.
 
 RULES:
-- Base recommendations ONLY on the candidate's actual skills, experience, projects, and education
-- Do NOT assume skills or experience not evidenced in the profile
-- Clearly mark uncertain conclusions with low confidence
-- Be honest about gaps and missing qualifications
-- Do NOT predict employment success or guarantee interviews
-- Consider the Indian and global tech job market
-- Provide actionable, specific recommendations
+- Recommend strictly the TOP 2 to 3 best matching roles based on profile evidence.
+- Base recommendations ONLY on the candidate's actual skills, experience, projects, and education.
+- Keep reasoning, descriptions, and recommended steps concise (max 2 sentences per field).
+- Be honest about gaps and missing qualifications.
+- Do NOT predict employment success or guarantee interviews.
 
 Return a JSON object:
 {
@@ -35,12 +35,12 @@ Return a JSON object:
             "entry_level_considerations": "For entry-level candidates, considerations...",
             "recommended_next_steps": ["Step 1", "Step 2"],
             "alternative_paths": ["Alternative Role 1"],
-            "confidence": "low|medium|high"
+            "confidence": "medium"
         }
     ],
-    "profile_summary": "Brief summary of candidate's profile strengths",
-    "overall_readiness": "A candid assessment of job-market readiness",
-    "warnings": ["Any concerns or caveats about the recommendations"]
+    "profile_summary": "Brief 1-2 sentence summary of candidate's profile strengths",
+    "overall_readiness": "A candid 1-2 sentence assessment of job-market readiness",
+    "warnings": []
 }"""
 
 CAREER_COMPARISON_PROMPT = """Compare the following career roles for the given candidate profile.
@@ -48,8 +48,7 @@ For each role, evaluate fit based on the candidate's actual skills and experienc
 
 RULES:
 - Use only evidence from the profile
-- Don't fabricate qualifications
-- Be honest about gaps
+- Keep reasoning concise (max 2 sentences)
 - Compare objectively
 
 Return a JSON object:
@@ -73,70 +72,54 @@ Return a JSON object:
 
 
 class CareerIntelligenceService:
-    """AI-powered career analysis and recommendation engine."""
+    """AI-powered career analysis and recommendation engine with caching."""
 
     def __init__(self):
         self.ai = AIService()
+        self._cache: dict[int, dict[str, Any]] = {}
+        self._cache_ttl = 1800  # 30 minutes
 
     def _profile_to_text(self, profile: CandidateProfile) -> str:
-        """Convert profile to structured text for AI analysis."""
+        """Convert profile to structured concise text for fast AI analysis."""
         parts = []
 
         if profile.headline:
             parts.append(f"Headline: {profile.headline}")
         if profile.summary:
-            parts.append(f"Summary: {profile.summary}")
+            parts.append(f"Summary: {profile.summary[:250]}")
         if profile.current_role:
             parts.append(f"Current Role: {profile.current_role}")
-        if profile.current_company:
-            parts.append(f"Current Company: {profile.current_company}")
         if profile.total_experience_years:
             parts.append(f"Total Experience: {profile.total_experience_years} years")
         if profile.education_level:
-            parts.append(f"Education Level: {profile.education_level}")
-        if profile.location:
-            parts.append(f"Location: {profile.location}")
+            parts.append(f"Education: {profile.education_level}")
 
-        # Skills
+        # Top 25 skills
         if profile.skills:
-            skill_list = [f"- {s.name} ({s.category or 'general'}, {s.proficiency_level or 'unknown level'})" for s in profile.skills]
-            parts.append(f"\nSkills:\n" + "\n".join(skill_list))
+            top_skills = [s.name for s in profile.skills[:25]]
+            parts.append(f"Skills: {', '.join(top_skills)}")
 
-        # Experience
+        # Top 3 experiences
         if profile.experiences:
             exp_list = []
-            for exp in profile.experiences:
+            for exp in profile.experiences[:3]:
                 exp_text = f"- {exp.title} at {exp.company}"
-                if exp.start_date:
-                    exp_text += f" ({exp.start_date} - {exp.end_date or 'Present'})"
                 if exp.description:
-                    exp_text += f"\n  {exp.description[:300]}"
+                    exp_text += f": {exp.description[:150]}"
                 if exp.technologies:
-                    exp_text += f"\n  Technologies: {', '.join(exp.technologies)}"
+                    exp_text += f" (Tech: {', '.join(exp.technologies[:6])})"
                 exp_list.append(exp_text)
-            parts.append(f"\nWork Experience:\n" + "\n".join(exp_list))
+            parts.append(f"Experience:\n" + "\n".join(exp_list))
 
-        # Projects
+        # Top 2 projects
         if profile.projects:
             proj_list = []
-            for proj in profile.projects:
-                proj_text = f"- {proj.name}"
+            for proj in profile.projects[:2]:
+                p_text = f"- {proj.name}"
                 if proj.description:
-                    proj_text += f": {proj.description[:200]}"
-                if proj.technologies:
-                    proj_text += f"\n  Technologies: {', '.join(proj.technologies)}"
-                proj_list.append(proj_text)
-            parts.append(f"\nProjects:\n" + "\n".join(proj_list))
-
-        # Education
-        if profile.education:
-            edu_list = [f"- {e.degree} in {e.field_of_study or 'N/A'} from {e.institution}" for e in profile.education]
-            parts.append(f"\nEducation:\n" + "\n".join(edu_list))
-
-        # Certifications
-        if profile.certifications:
-            cert_list = [f"- {c.name} ({c.issuing_organization or 'N/A'})" for c in profile.certifications]
-            parts.append(f"\nCertifications:\n" + "\n".join(cert_list))
+                    p_text += f": {proj.description[:100]}"
+                proj_list.append(p_text)
+            parts.append(f"Projects:\n" + "\n".join(proj_list))
 
         return "\n".join(parts)
 
@@ -144,8 +127,16 @@ class CareerIntelligenceService:
         self,
         user_id: int,
         db: AsyncSession,
+        refresh: bool = False,
     ) -> dict[str, Any]:
-        """Generate career recommendations based on profile."""
+        """Generate or retrieve cached career recommendations based on profile."""
+        now = time.time()
+        if not refresh and user_id in self._cache:
+            entry = self._cache[user_id]
+            if now - entry["timestamp"] < self._cache_ttl:
+                logger.info("Returning cached career intelligence", user_id=user_id)
+                return entry["data"]
+
         result = await db.execute(
             select(CandidateProfile)
             .where(CandidateProfile.user_id == user_id)
@@ -166,15 +157,22 @@ class CareerIntelligenceService:
             raise ValueError("Profile needs at least some skills or experience for career analysis.")
 
         profile_text = self._profile_to_text(profile)
-        prompt = f"Analyze this candidate's profile and recommend suitable career paths:\n\n{profile_text}"
+        prompt = f"Analyze this candidate profile and recommend suitable career paths:\n\n{profile_text}"
 
         analysis = await self.ai.generate_json(
             prompt=prompt,
             system_instruction=CAREER_ANALYSIS_PROMPT,
+            temperature=0.1,
+            max_tokens=1500,
         )
 
-        # Add metadata
         analysis["generated_at"] = datetime.now(timezone.utc).isoformat()
+
+        # Cache response
+        self._cache[user_id] = {
+            "timestamp": now,
+            "data": analysis,
+        }
 
         return analysis
 

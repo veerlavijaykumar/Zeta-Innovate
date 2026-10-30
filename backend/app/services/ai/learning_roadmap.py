@@ -99,13 +99,14 @@ class LearningRoadmapService:
             f"Create a realistic, week-by-week learning roadmap covering missing competencies needed for {target_role}."
         )
 
-        formatted_system_prompt = LEARNING_ROADMAP_PROMPT.format(hours_per_week=hours_per_week)
+        formatted_system_prompt = LEARNING_ROADMAP_PROMPT.replace("{hours_per_week}", str(hours_per_week))
 
         try:
             data = await self.ai.generate_json(
                 prompt=prompt,
                 system_instruction=formatted_system_prompt,
                 temperature=0.2,
+                max_tokens=2048,
             )
         except Exception as e:
             logger.error("Failed to generate AI roadmap", error=str(e))

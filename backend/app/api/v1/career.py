@@ -17,12 +17,13 @@ career_service = CareerIntelligenceService()
 
 @router.get("/recommendations", response_model=CareerAnalysisResponse)
 async def get_career_recommendations(
+    refresh: bool = False,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Generate or retrieve AI-powered career recommendations based on user profile facts."""
     try:
-        analysis = await career_service.analyze_career(user_id=current_user.id, db=db)
+        analysis = await career_service.analyze_career(user_id=current_user.id, db=db, refresh=refresh)
         return analysis
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

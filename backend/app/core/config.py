@@ -32,11 +32,11 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     
     # CORS
-    CORS_ORIGINS: str = "http://localhost:5174,http://localhost:5173,http://localhost:3000,http://127.0.0.1:5174,http://127.0.0.1:5173"
+    CORS_ORIGINS: str = "http://localhost:5180,http://localhost:5174,http://localhost:5173,http://localhost:3000,http://127.0.0.1:5180,http://127.0.0.1:5174,http://127.0.0.1:5173"
     
     # AI / Gemini
     GEMINI_API_KEY: Optional[str] = None
-    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_MODEL: str = "gemini-3.1-flash-lite"
     GEMINI_EMBEDDING_MODEL: str = "models/gemini-embedding-001"
     AI_REQUEST_TIMEOUT: int = 60
     AI_MAX_RETRIES: int = 3

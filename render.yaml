@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: careermap-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.13
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.1-flash-lite
+      - key: CORS_ORIGINS
+        value: "http://localhost:5180,http://localhost:5173,http://localhost:3000"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: careermap-db
+          property: connectionString
+
+databases:
+  - name: careermap-db
+    databaseName: careermap
+    user: careermap_user
+    plan: free

@@ -237,8 +237,9 @@ class ApiClient {
   }
 
   // --- Career Intel ---
-  async getCareerRecommendations(): Promise<CareerAnalysisResponse> {
-    return this.request<CareerAnalysisResponse>('/career/recommendations');
+  async getCareerRecommendations(refresh: boolean = false): Promise<CareerAnalysisResponse> {
+    const query = refresh ? '?refresh=true' : '';
+    return this.request<CareerAnalysisResponse>(`/career/recommendations${query}`);
   }
 
   async compareCareers(roles: string[]): Promise<any> {

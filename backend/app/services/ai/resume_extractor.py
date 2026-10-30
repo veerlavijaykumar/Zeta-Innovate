@@ -109,14 +109,18 @@ class ResumeExtractorService:
                 text_parts.append(page.get_text())
             doc.close()
 
+            import re
             full_text = "\n".join(text_parts)
-            if not full_text.strip():
+            # Normalize whitespace: collapse multiple blank lines and spaces
+            full_text = re.sub(r'[ \t]+', ' ', full_text)
+            full_text = re.sub(r'\n\s*\n+', '\n\n', full_text).strip()
+            if not full_text:
                 raise ValueError("PDF appears to be empty or contains only images")
 
-            # Limit text length to avoid token limits
-            if len(full_text) > 20000:
-                full_text = full_text[:20000]
-                logger.warning("Resume text truncated to 20000 chars")
+            # Limit text length to 8000 chars for fast processing
+            if len(full_text) > 8000:
+                full_text = full_text[:8000]
+                logger.info("Resume text normalized and trimmed to 8000 chars")
 
             return full_text
         except Exception as e:
@@ -142,6 +146,7 @@ class ResumeExtractorService:
                 prompt=prompt,
                 system_instruction=EXTRACTION_SYSTEM_PROMPT,
                 temperature=0.1,
+                max_tokens=2048,
             )
         except Exception as e:
             logger.error("AI extraction failed", error=str(e))
